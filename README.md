@@ -1,9 +1,13 @@
 # GCP Post-Quantum Cryptography (PQC) Migration Toolkit
 
-[![CI Pipeline](https://github.com/anandkrshnn/gcp-pqc-migration-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/anandkrshnn/gcp-pqc-migration-toolkit/actions/workflows/ci.yml)
+[![CI Pipeline](https://github.com/anandkrshnn-ai/gcp-pqc-migration-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/anandkrshnn-ai/gcp-pqc-migration-toolkit/actions/workflows/ci.yml)
+[![Python Version](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](requirements.txt)
+[![Terraform Version](https://img.shields.io/badge/Terraform-1.5%2B-purple.svg)](terraform/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 A production-quality toolkit helping enterprise security teams migrate from legacy classical cryptography (RSA/ECC) to NIST-standardized Post-Quantum Cryptography (PQC) on Google Cloud. Focuses on **Harvest Now, Decrypt Later (HNDL)** risk mitigations, crypto-agility audits, and transition orchestration.
+
+⭐ **Support the Project**: If you find this toolkit valuable for post-quantum migrations, please star and fork the repository!
 
 ---
 
@@ -54,26 +58,41 @@ graph TD
 | **ML-DSA (FIPS 204)** | Dilithium | 2030 | Digital Signatures | GKE binary authorization and IAM validation gates |
 | **SLH-DSA (FIPS 205)** | SPHINCS+ | 2033 | State-free Signatures | Root certificate signing and audit logging |
 
+---
+
+## 4. 5-Year Enterprise Migration Roadmap
+
+| Phase | Timeframe | Goals | Key Actions | Deliverables |
+| :--- | :--- | :--- | :--- | :--- |
+| **Phase 1: Discovery** | Year 1 | Cryptographic Inventory | Audit all GCP services for legacy RSA/ECC ciphers | PQC compliance report |
+| **Phase 2: Hybridization** | Year 2-3 | Hybrid wrapping models | Wrap active KMS databases with classical-quantum hybrids | Hybrid KMS key enclaves |
+| **Phase 3: Sandbox** | Year 4 | Sandbox verification | Deploy GKE binary authorization with ML-DSA checks | Verified GKE gates |
+| **Phase 4: Enforcement** | Year 5 | Strict Org Policies | Block classical algorithm fallback via organization controls | Locked Org Policies |
 
 ---
 
-## 4. Quickstart Guide
+## 5. One-Click Verification Demo
 
-### Prerequisites
-- Python 3.10+
-- Terraform 1.5+
-- Google Cloud SDK (gcloud) authenticated with appropriate permissions.
+Run the automated simulation script to execute the inventory assessment scan and quantum breach estimation calculations in one command:
+
+```bash
+chmod +x demo/run_demo.sh
+./demo/run_demo.sh
+```
+
+---
+
+## 6. Quickstart Guide
 
 ### Setup
 1. Clone the repository:
    ```bash
-   git clone https://github.com/anandkrshnn/gcp-pqc-migration-toolkit.git
+   git clone https://github.com/anandkrshnn-ai/gcp-pqc-migration-toolkit.git
    cd gcp-pqc-migration-toolkit
    ```
 2. Install Python dependencies:
    ```bash
-   pip install -r scanners/requirements.txt
-   pip install cirq streamlit
+   pip install -r requirements.txt
    ```
 
 ### 1. Run Inventory Compliance Assessment
@@ -96,5 +115,11 @@ streamlit run dashboard/streamlit_compliance_dashboard.py
 
 ---
 
-## 5. Known Operational Limitations
+## 7. Known Operational Limitations
 For a detailed breakdown of GCP API limits, Cloud KMS PQC support statuses, and Shor algorithm simulation thresholds, refer to [docs/limitations.md](docs/limitations.md).
+
+---
+
+## 8. Connect & Collaborate
+- **LinkedIn**: [Anandakrishnan](https://www.linkedin.com/in/anandkrshnn/)
+- **PTV Bridge Integration**: For inquiries on integrating with post-quantum security enclaves, contact the maintainer.

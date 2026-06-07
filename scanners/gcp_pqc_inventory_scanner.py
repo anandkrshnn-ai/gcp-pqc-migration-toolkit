@@ -1,9 +1,10 @@
 import os
 import sys
 import json
+import csv
 import argparse
 
-# Simulated GCP Asset Inventory data for standalone demo execution
+# Expanded Simulated GCP Asset Inventory data representing Cert Manager & GKE elements
 DEFAULT_MOCK_ASSETS = [
     {
         "name": "//cloudkms.googleapis.com/projects/pqc-demo-project/locations/us-central1/keyRings/ring-1/cryptoKeys/legacy-key-rsa",
@@ -11,13 +12,6 @@ DEFAULT_MOCK_ASSETS = [
         "algorithm": "RSA_SIGN_PKCS1_2048_SHA256",
         "status": "NON_PQC_COMPLIANT",
         "severity": "CRITICAL"
-    },
-    {
-        "name": "//cloudkms.googleapis.com/projects/pqc-demo-project/locations/us-central1/keyRings/ring-1/cryptoKeys/legacy-key-ecc",
-        "type": "kms.CryptoKey",
-        "algorithm": "EC_SIGN_P256_SHA256",
-        "status": "NON_PQC_COMPLIANT",
-        "severity": "HIGH"
     },
     {
         "name": "//cloudkms.googleapis.com/projects/pqc-demo-project/locations/us-central1/keyRings/ring-1/cryptoKeys/pqc-wrapped-hybrid",
@@ -30,6 +24,20 @@ DEFAULT_MOCK_ASSETS = [
         "name": "//compute.googleapis.com/projects/pqc-demo-project/global/sslPolicies/legacy-tls-policy",
         "type": "compute.SslPolicy",
         "minTlsVersion": "TLS_1_1",
+        "status": "NON_PQC_COMPLIANT",
+        "severity": "HIGH"
+    },
+    {
+        "name": "//certificatemanager.googleapis.com/projects/pqc-demo-project/locations/global/certificates/legacy-rsa-cert",
+        "type": "certificatemanager.Certificate",
+        "keyAlgorithm": "RSA_2048",
+        "status": "NON_PQC_COMPLIANT",
+        "severity": "CRITICAL"
+    },
+    {
+        "name": "//binaryauthorization.googleapis.com/projects/pqc-demo-project/policy",
+        "type": "binaryauthorization.Policy",
+        "signatureAlgorithm": "ECDSA_P256_SHA256",
         "status": "NON_PQC_COMPLIANT",
         "severity": "HIGH"
     }
@@ -97,13 +105,48 @@ def scan_inventory(assets):
                 finding["reason"] = f"SSL Policy allows legacy {tls_ver}. TLS 1.3 is required for quantum resistance."
                 finding["severity"] = asset.get("severity", "HIGH")
 
+        # Check Certificate Manager Keys
+        elif asset.get("type") == "certificatemanager.Certificate":
+            key_algo = asset.get("keyAlgorithm", "")
+            if "RSA" in key_algo or "ECDSA" in key_algo:
+                finding["status"] = "NON_PQC_COMPLIANT"
+                finding["reason"] = f"Certificate relies on classical asymmetric signature: {key_algo}."
+                finding["severity"] = "CRITICAL"
+
+        # Check GKE Binary Authorization Gates
+        elif asset.get("type") == "binaryauthorization.Policy":
+            sig_algo = asset.get("signatureAlgorithm", "")
+            if "ML_DSA" not in sig_algo:
+                finding["status"] = "NON_PQC_COMPLIANT"
+                finding["reason"] = f"GKE Binary Authorization allows non-PQC algorithm: {sig_algo}. ML-DSA-65/85 required."
+                finding["severity"] = "HIGH"
+
         findings.append(finding)
     return findings
+
+def export_to_csv(findings, output_csv_path):
+    """Simulates BigQuery export by saving findings to a structured CSV file."""
+    try:
+        with open(output_csv_path, mode="w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["Resource", "Type", "Status", "Reason", "Severity"])
+            for finding in findings:
+                writer.writerow([
+                    finding["resource"],
+                    finding["type"],
+                    finding["status"],
+                    finding["reason"],
+                    finding["severity"]
+                ])
+        print(f"BigQuery export simulation saved to CSV: {output_csv_path}")
+    except Exception as e:
+        print(f"[Error] Failed to write CSV report: {e}", file=sys.stderr)
 
 def main():
     parser = argparse.ArgumentParser(description="GCP Post-Quantum Compliance Assessor")
     parser.add_argument("--file", help="Optional path to a custom structured GCP asset log.")
     parser.add_argument("--max-log-lines", type=int, default=500, help="Maximum lines to load from files.")
+    parser.add_argument("--bq-export-sim", default="pqc_inventory_export.csv", help="Simulate BigQuery export output CSV path.")
     args = parser.parse_args()
 
     assets = load_assets(args.file, max_log_lines=args.max_log_lines)
@@ -121,7 +164,11 @@ def main():
     # Save output structured report
     with open("pqc_compliance_report.json", "w", encoding="utf-8") as out:
         json.dump(findings, out, indent=2)
-    print("Report saved to: pqc_compliance_report.json\n")
+    print("Report saved to: pqc_compliance_report.json")
+
+    # Run BigQuery CSV export simulation
+    if args.bq_export_sim:
+        export_to_csv(findings, args.bq_export_sim)
 
 if __name__ == "__main__":
     main()
