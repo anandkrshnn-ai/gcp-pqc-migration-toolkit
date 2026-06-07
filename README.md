@@ -48,11 +48,12 @@ graph TD
 
 ## 3. Governance & Standards Alignment
 
-| Algorithm Standard | NIST Reference | Transition Deadline (GAIP-2030) | Purpose | GCP Migration Strategy |
+| Algorithm Standard | NIST Reference | Recommended Timeline | Purpose | GCP Migration Strategy |
 | :--- | :--- | :--- | :--- | :--- |
-| **ML-KEM (FIPS 203)** | Kyber (768/1024) | 2030 (National Security Command) | Key Encapsulation (KEM) | Hybrid HSM-backed Cloud KMS wrapping models |
+| **ML-KEM (FIPS 203)** | Kyber (768/1024) | 2030 | Key Encapsulation (KEM) | Hybrid HSM-backed Cloud KMS wrapping models |
 | **ML-DSA (FIPS 204)** | Dilithium | 2030 | Digital Signatures | GKE binary authorization and IAM validation gates |
 | **SLH-DSA (FIPS 205)** | SPHINCS+ | 2033 | State-free Signatures | Root certificate signing and audit logging |
+
 
 ---
 
