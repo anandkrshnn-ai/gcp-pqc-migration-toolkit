@@ -1,0 +1,48 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate_python:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-runspec: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f scanners/requirements.txt ]; then pip install -r scanners/requirements.txt; fi
+          pip install pytest cirq streamlit
+
+      - name: Run Tests
+        run: |
+          python -m pytest tests/
+
+  validate_terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive terraform/
+
+      - name: Initialize & Validate Modules
+        run: |
+          cd terraform/modules/pqc-kms && terraform init -backend=false && terraform validate
+          cd ../pqc-policies && terraform init -backend=false && terraform validate
