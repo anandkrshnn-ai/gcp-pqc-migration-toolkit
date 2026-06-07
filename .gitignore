@@ -22,3 +22,7 @@ crash.log
 # OS-specific
 .DS_Store
 Thumbs.db
+
+# Generated compliance reports
+pqc_inventory_export.csv
+
