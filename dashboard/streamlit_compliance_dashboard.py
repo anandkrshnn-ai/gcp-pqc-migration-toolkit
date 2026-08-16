@@ -152,96 +152,142 @@ with m4:
 
 st.markdown("---")
 
-# Layout: Scanner Findings on Left, Tools/Exporters on Right
-left_col, right_col = st.columns([2, 1])
+# Layout: Tabs
+tab1, tab2 = st.tabs(["📋 Audited Assets & Compliance Registry", "📈 Cryptographic Security Trends"])
 
-with left_col:
-    st.subheader("📋 Audited Assets & Compliance Registry")
-    
-    # Priority Filters
-    filter_severity = st.multiselect("Filter by Severity", options=["CRITICAL", "HIGH", "MEDIUM", "NONE"], default=["CRITICAL", "HIGH", "MEDIUM", "NONE"])
-    
-    for f in findings:
-        sev = html.escape(f.get("severity", "NONE"))
-        if sev not in filter_severity:
-            continue
+with tab1:
+    left_col, right_col = st.columns([2, 1])
+
+    with left_col:
+        st.subheader("📋 Audited Assets & Compliance Registry")
+        
+        # Priority Filters
+        filter_severity = st.multiselect("Filter by Severity", options=["CRITICAL", "HIGH", "MEDIUM", "NONE"], default=["CRITICAL", "HIGH", "MEDIUM", "NONE"])
+        
+        for f in findings:
+            sev = html.escape(f.get("severity", "NONE"))
+            if sev not in filter_severity:
+                continue
+                
+            is_compliant = f.get("status") == "PQC_COMPLIANT"
+            card_class = "compliant-card" if is_compliant else "report-card"
+            status_label = "PQC COMPLIANT" if is_compliant else "NON-COMPLIANT"
+            status_color = "green" if is_compliant else "red"
             
-        is_compliant = f.get("status") == "PQC_COMPLIANT"
-        card_class = "compliant-card" if is_compliant else "report-card"
-        status_label = "PQC COMPLIANT" if is_compliant else "NON-COMPLIANT"
-        status_color = "green" if is_compliant else "red"
-        
-        res_name = html.escape(f.get('resource_name', ''))
-        res_type = html.escape(f.get('resource_type', ''))
-        algo = html.escape(f.get('algorithm', ''))
-        hndl_pri = html.escape(f.get('hndl_priority', 'MEDIUM'))
-        classification = html.escape(f.get('crypto_classification', 'CLASSICAL'))
-        rec = html.escape(f.get('recommendation', ''))
-        
-        st.markdown(f"""
-        <div class="{card_class}">
-            <h4>Resource: <code>{res_name}</code></h4>
-            <p><b>Type:</b> <code>{res_type}</code> | <b>Algorithm:</b> <code>{algo}</code> | <b>Classification:</b> <code>{classification}</code></p>
-            <p><b>Readiness Status:</b> <span style="color:{status_color}; font-weight:bold;">{status_label}</span> (Severity: <b>{sev}</b> | HNDL Priority: <b>{hndl_pri}</b>)</p>
-            <p><b>Recommendation:</b> {rec}</p>
-        </div>
-        """, unsafe_allow_html=True)
+            res_name = html.escape(f.get('resource_name', ''))
+            res_type = html.escape(f.get('resource_type', ''))
+            algo = html.escape(f.get('algorithm', ''))
+            hndl_pri = html.escape(f.get('hndl_priority', 'MEDIUM'))
+            classification = html.escape(f.get('crypto_classification', 'CLASSICAL'))
+            rec = html.escape(f.get('recommendation', ''))
+            
+            st.markdown(f"""
+            <div class="{card_class}">
+                <h4>Resource: <code>{res_name}</code></h4>
+                <p><b>Type:</b> <code>{res_type}</code> | <b>Algorithm:</b> <code>{algo}</code> | <b>Classification:</b> <code>{classification}</code></p>
+                <p><b>Readiness Status:</b> <span style="color:{status_color}; font-weight:bold;">{status_label}</span> (Severity: <b>{sev}</b> | HNDL Priority: <b>{hndl_pri}</b>)</p>
+                <p><b>Recommendation:</b> {rec}</p>
+            </div>
+            """, unsafe_allow_html=True)
 
-with right_col:
-    st.subheader("🛠️ Migration Action Panel")
-    
-    # Export Actions
-    st.write("### Export Scans")
-    
-    df = pd.DataFrame(findings)
-    if not df.empty and "raw_metadata" in df.columns:
-        df = df.drop(columns=["raw_metadata"])
+    with right_col:
+        st.subheader("🛠️ Migration Action Panel")
         
-    csv_data = df.to_csv(index=False).encode('utf-8')
-    json_data = json.dumps(findings, indent=2).encode('utf-8')
-    
-    # Markdown exporter logic
-    md_report = "# GCP Post-Quantum Migration Audit Report\n\n"
-    md_report += f"**PQC Maturity Score**: {pqc_ready_percentage}%\n"
-    md_report += f"**Total Audited**: {total_assets} | **Compliant**: {compliant_count} | **Non-Compliant**: {non_compliant_count}\n\n"
-    md_report += "## Findings Registry\n"
-    for f in findings:
-        md_report += f"### Resource: `{f.get('resource_name')}`\n"
-        md_report += f"- **Type**: `{f.get('resource_type')}`\n"
-        md_report += f"- **Classification**: `{f.get('crypto_classification')}`\n"
-        md_report += f"- **Status**: {f.get('status')} (Severity: {f.get('severity')})\n"
-        md_report += f"- **Recommendation**: {f.get('recommendation')}\n\n"
-    
-    st.download_button("Download CSV Report", csv_data, "pqc_audit_report.csv", "text/csv")
-    st.download_button("Download JSON Report", json_data, "pqc_audit_report.json", "application/json")
-    st.download_button("Download Markdown Audit Summary", md_report.encode('utf-8'), "pqc_audit_report.md", "text/markdown")
-    
-    # CycloneDX 1.6+ CBOM Exporter
-    try:
-        from gcp_pqc_inventory_scanner import generate_cbom
-        cbom_dict = generate_cbom(findings)
-        cbom_json_data = json.dumps(cbom_dict, indent=2).encode('utf-8')
-        st.download_button("Download CycloneDX 1.6+ CBOM JSON", cbom_json_data, "pqc_cbom.json", "application/json")
-    except Exception as e:
-        st.warning(f"Failed to load CBOM exporter: {e}")
-    
-    # Verifiable Signed Report Exporter
-    try:
-        from report_attester import sign_findings_report
-        signed_dict = sign_findings_report(findings)
-        signed_json_data = json.dumps(signed_dict, indent=2).encode('utf-8')
-        st.download_button("Download Verifiable Signed Report JSON", signed_json_data, "pqc_compliance_report.signed.json", "application/json")
-    except Exception as e:
-        st.warning(f"Failed to load attestation signer: {e}")
+        # Export Actions
+        st.write("### Export Scans")
+        
+        df = pd.DataFrame(findings)
+        if not df.empty and "raw_metadata" in df.columns:
+            df = df.drop(columns=["raw_metadata"])
+            
+        csv_data = df.to_csv(index=False).encode('utf-8')
+        json_data = json.dumps(findings, indent=2).encode('utf-8')
+        
+        # Markdown exporter logic
+        md_report = "# GCP Post-Quantum Migration Audit Report\n\n"
+        md_report += f"**PQC Maturity Score**: {pqc_ready_percentage}%\n"
+        md_report += f"**Total Audited**: {total_assets} | **Compliant**: {compliant_count} | **Non-Compliant**: {non_compliant_count}\n\n"
+        md_report += "## Findings Registry\n"
+        for f in findings:
+            md_report += f"### Resource: `{f.get('resource_name')}`\n"
+            md_report += f"- **Type**: `{f.get('resource_type')}`\n"
+            md_report += f"- **Classification**: `{f.get('crypto_classification')}`\n"
+            md_report += f"- **Status**: {f.get('status')} (Severity: {f.get('severity')})\n"
+            md_report += f"- **Recommendation**: {f.get('recommendation')}\n\n"
+        
+        st.download_button("Download CSV Report", csv_data, "pqc_audit_report.csv", "text/csv")
+        st.download_button("Download JSON Report", json_data, "pqc_audit_report.json", "application/json")
+        st.download_button("Download Markdown Audit Summary", md_report.encode('utf-8'), "pqc_audit_report.md", "text/markdown")
+        
+        # CycloneDX 1.6+ CBOM Exporter
+        try:
+            from gcp_pqc_inventory_scanner import generate_cbom
+            cbom_dict = generate_cbom(findings)
+            cbom_json_data = json.dumps(cbom_dict, indent=2).encode('utf-8')
+            st.download_button("Download CycloneDX 1.6+ CBOM JSON", cbom_json_data, "pqc_cbom.json", "application/json")
+        except Exception as e:
+            st.warning(f"Failed to load CBOM exporter: {e}")
+        
+        # Verifiable Signed Report Exporter
+        try:
+            from report_attester import sign_findings_report
+            signed_dict = sign_findings_report(findings)
+            signed_json_data = json.dumps(signed_dict, indent=2).encode('utf-8')
+            st.download_button("Download Verifiable Signed Report JSON", signed_json_data, "pqc_compliance_report.signed.json", "application/json")
+        except Exception as e:
+            st.warning(f"Failed to load attestation signer: {e}")
 
-    st.markdown("---")
-    st.write("### HNDL Risk Prioritization Index")
-    st.info("Prioritize keys wrapping long-lived sensitive datasets (Data Longevity > 5 years) first, as they are targets of Harvest Now, Decrypt Later campaigns.")
+        st.markdown("---")
+        st.write("### HNDL Risk Prioritization Index")
+        st.info("Prioritize keys wrapping long-lived sensitive datasets (Data Longevity > 5 years) first, as they are targets of Harvest Now, Decrypt Later campaigns.")
+        
+        longevity = st.slider("Target Data Longevity (Years)", min_value=1, max_value=30, value=10)
+        if longevity >= 10:
+            st.error("Priority: IMMEDIATE. Implement hybrid wrap policies immediately.")
+        elif longevity >= 5:
+            st.warning("Priority: HIGH. Plan migration wrappers within 12 months.")
+        else:
+            st.success("Priority: MEDIUM/LOW. Schedule transition in standard roadmap.")
+
+with tab2:
+    st.subheader("📈 PQC Maturity & Posture Trends")
+    st.markdown("Track post-quantum posture adjustments, key rotations, and compliance levels across scanner runs.")
     
-    longevity = st.slider("Target Data Longevity (Years)", min_value=1, max_value=30, value=10)
-    if longevity >= 10:
-        st.error("Priority: IMMEDIATE. Implement hybrid wrap policies immediately.")
-    elif longevity >= 5:
-        st.warning("Priority: HIGH. Plan migration wrappers within 12 months.")
-    else:
-        st.success("Priority: MEDIUM/LOW. Schedule transition in standard roadmap.")
+    try:
+        from drift_tracker import get_scan_history, check_for_drift
+        project_id_key = "pqc-demo-project"
+        history = get_scan_history(project_id_key)
+        
+        if history:
+            df_hist = pd.DataFrame(history)
+            df_hist['timestamp'] = pd.to_datetime(df_hist['timestamp'])
+            
+            # Show historical trend graph
+            st.write("#### PQC Maturity Score Over Time")
+            chart_df = df_hist.copy().rename(columns={"maturity_score": "Maturity Score (%)", "timestamp": "Scan Time"}).set_index("Scan Time")
+            st.line_chart(chart_df["Maturity Score (%)"])
+            
+            # Compliance Drift Alert Panel
+            drift_results = check_for_drift(project_id_key, findings)
+            if drift_results["drift_detected"]:
+                st.warning("### ⚠️ Compliance Drift Identified")
+                if drift_results["previous_maturity_score"] is not None:
+                    st.write(f"Maturity level regression: **{drift_results['previous_maturity_score']}% ➡️ {drift_results['new_maturity_score']}%** (delta: **{drift_results['score_delta']}%**)")
+                if drift_results["newly_classical_assets"]:
+                    st.write("**New Classical Assets Introduced:**")
+                    for a in drift_results["newly_classical_assets"]:
+                        st.write(f"- `{a}`")
+                if drift_results["downgraded_assets"]:
+                    st.write("**Downgraded Assets (PQC ➡️ Classical):**")
+                    for a in drift_results["downgraded_assets"]:
+                        st.write(f"- `{a}`")
+            else:
+                st.success("✅ No cryptographic policy or maturity drift detected in latest run.")
+            
+            st.write("#### Historical Scan Database Snapshots")
+            st.dataframe(df_hist)
+        else:
+            st.info("No scan history recorded in SQLite yet. Run the scanner to log runs and visualize trends.")
+    except Exception as e:
+        st.error(f"Failed to load scan trends: {e}")
+

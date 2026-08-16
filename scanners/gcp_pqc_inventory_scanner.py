@@ -383,6 +383,31 @@ def main():
     # Compute PQC Maturity Score
     maturity_score = calculate_maturity_score(findings)
 
+    # Check for compliance drift before recording the new scan
+    project_id_key = project_id or "pqc-demo-project"
+    try:
+        from drift_tracker import check_for_drift, record_scan
+        drift_results = check_for_drift(project_id_key, findings)
+        if drift_results["drift_detected"]:
+            print("\n" + "!" * 155)
+            print("⚠️  [COMPLIANCE DRIFT DETECTED] Crypto policy or key compliance regression identified!")
+            if drift_results["previous_maturity_score"] is not None:
+                print(f"   Maturity Score: {drift_results['previous_maturity_score']}% -> {drift_results['new_maturity_score']}% (delta: {drift_results['score_delta']}%)")
+            if drift_results["newly_classical_assets"]:
+                print(f"   [NEW CLASSICAL ASSETS] (non-compliant/classical resources introduced since last scan):")
+                for asset in drift_results["newly_classical_assets"]:
+                    print(f"     - {asset}")
+            if drift_results["downgraded_assets"]:
+                print(f"   [DOWNGRADED ASSETS] (previously compliant/hybrid but rotated/modified to classical):")
+                for asset in drift_results["downgraded_assets"]:
+                    print(f"     - {asset}")
+            print("!" * 155 + "\n")
+        
+        # Record the current run
+        record_scan(project_id_key, findings)
+    except Exception as e:
+        print(f"[Warning] Failed to track drift / log history: {e}", file=sys.stderr)
+
     # Print results to stdout as formatted table
     print("\n### GCP Post-Quantum Cryptography Compliance Report")
     print("-" * 155)

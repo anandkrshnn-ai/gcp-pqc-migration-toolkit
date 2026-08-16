@@ -11,6 +11,7 @@ from gcp_pqc_inventory_scanner import DEFAULT_MOCK_ASSETS, export_to_csv, genera
 from cirq_quantum_estimator import estimate_shors_requirements, simulate_toy_quantum_step, get_hndl_priority
 from report_attester import sign_findings_report
 from verify_report import verify_signed_report
+from drift_tracker import record_scan, check_for_drift, get_scan_history
 
 def test_cbom_generation():
     cbom = generate_cbom(DEFAULT_MOCK_ASSETS)
@@ -124,4 +125,64 @@ def test_report_attestation_tampering():
     
     is_valid = verify_signed_report(signed_envelope)
     assert is_valid is False
+
+def test_drift_tracker_recording():
+    project_id = "test-drift-project"
+    test_findings = [
+        {
+            "resource_name": "key-1",
+            "resource_type": "kms.CryptoKey",
+            "algorithm": "RSA_SIGN",
+            "status": "NON_PQC_COMPLIANT",
+            "severity": "CRITICAL",
+            "recommendation": "Migrate",
+            "hndl_priority": "IMMEDIATE",
+            "crypto_classification": "CLASSICAL"
+        }
+    ]
+    scan_id = record_scan(project_id, test_findings)
+    assert isinstance(scan_id, int)
+    
+    history = get_scan_history(project_id)
+    assert len(history) > 0
+    assert history[-1]["maturity_score"] == 0
+
+def test_drift_regression_detection():
+    project_id = "test-drift-project-reg"
+    
+    # 1. Base run (Maturity Score = 100%)
+    base_findings = [
+        {
+            "resource_name": "key-1",
+            "resource_type": "kms.CryptoKey",
+            "algorithm": "ML-DSA-65",
+            "status": "PQC_COMPLIANT",
+            "severity": "NONE",
+            "recommendation": "None",
+            "hndl_priority": "LOW",
+            "crypto_classification": "NATIVE_PQC"
+        }
+    ]
+    record_scan(project_id, base_findings)
+    
+    # 2. Second run: downgrade asset back to classical (Maturity Score drops to 0%)
+    new_findings = [
+        {
+            "resource_name": "key-1",
+            "resource_type": "kms.CryptoKey",
+            "algorithm": "RSA_2048",
+            "status": "NON_PQC_COMPLIANT",
+            "severity": "CRITICAL",
+            "recommendation": "Migrate",
+            "hndl_priority": "IMMEDIATE",
+            "crypto_classification": "CLASSICAL"
+        }
+    ]
+    
+    drift_res = check_for_drift(project_id, new_findings)
+    assert drift_res["drift_detected"] is True
+    assert drift_res["previous_maturity_score"] == 100
+    assert drift_res["new_maturity_score"] == 0
+    assert "key-1" in drift_res["downgraded_assets"]
+
 
