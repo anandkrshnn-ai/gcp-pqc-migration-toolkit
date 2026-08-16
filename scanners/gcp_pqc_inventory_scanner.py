@@ -15,6 +15,7 @@ class Finding(TypedDict):
     severity: str
     recommendation: str
     hndl_priority: str
+    crypto_classification: str  # "CLASSICAL" | "NATIVE_PQC" | "HYBRID"
     raw_metadata: Dict[str, Any]
 
 # Expanded Simulated GCP Asset Inventory data for demo mode
@@ -27,6 +28,7 @@ DEFAULT_MOCK_ASSETS: list[Dict[str, Any]] = [
         "severity": "CRITICAL",
         "recommendation": "Configure software hybrid key-wrapping pattern using classical HSM wrappers.",
         "hndl_priority": "IMMEDIATE",
+        "crypto_classification": "CLASSICAL",
         "raw_metadata": {}
     },
     {
@@ -37,6 +39,7 @@ DEFAULT_MOCK_ASSETS: list[Dict[str, Any]] = [
         "severity": "NONE",
         "recommendation": "Compliant. No current action required.",
         "hndl_priority": "LOW",
+        "crypto_classification": "HYBRID",
         "raw_metadata": {}
     },
     {
@@ -47,6 +50,7 @@ DEFAULT_MOCK_ASSETS: list[Dict[str, Any]] = [
         "severity": "HIGH",
         "recommendation": "Upgrade SSL Policy min TLS version to TLS 1.3 to enforce post-quantum friendly key exchanges.",
         "hndl_priority": "HIGH",
+        "crypto_classification": "CLASSICAL",
         "raw_metadata": {}
     },
     {
@@ -57,9 +61,32 @@ DEFAULT_MOCK_ASSETS: list[Dict[str, Any]] = [
         "severity": "CRITICAL",
         "recommendation": "Prepare for post-quantum hybrid certificate verification and rotate to ML-DSA/hybrid certificates when supported.",
         "hndl_priority": "IMMEDIATE",
+        "crypto_classification": "CLASSICAL",
         "raw_metadata": {}
     }
 ]
+
+def classify_algorithm(algo: str, res_type: str) -> str:
+    """Classifies an algorithm into CLASSICAL, NATIVE_PQC, or HYBRID."""
+    algo_upper = algo.upper()
+    if res_type == "kms.CryptoKey":
+        if any(c in algo_upper for c in ["ML_DSA", "ML-DSA", "ML_KEM", "ML-KEM", "SLH_DSA", "SLH-DSA"]):
+            return "NATIVE_PQC"
+        elif "SYMMETRIC" in algo_upper or "AES" in algo_upper or "HYBRID" in algo_upper:
+            return "HYBRID"
+        else:
+            return "CLASSICAL"
+    elif res_type == "compute.SslPolicy":
+        if "TLS_1_3" in algo_upper:
+            return "HYBRID"  # TLS 1.3 supports hybrid PQC key exchange
+        else:
+            return "CLASSICAL"
+    elif res_type == "certificatemanager.Certificate":
+        if any(c in algo_upper for c in ["ML_DSA", "ML-DSA", "ML_KEM", "ML-KEM", "SLH_DSA", "SLH-DSA", "HYBRID"]):
+            return "NATIVE_PQC"
+        else:
+            return "CLASSICAL"
+    return "CLASSICAL"
 
 def scan_kms(project_id: str) -> list[Finding]:
     findings: list[Finding] = []
@@ -68,14 +95,11 @@ def scan_kms(project_id: str) -> list[Finding]:
         from google.api_core.exceptions import GoogleAPICallError
         client = kms_v1.KeyManagementServiceClient()
     except ImportError:
-        print("[Warning] google-cloud-kms not installed. Skipping real KMS scan.", file=sys.stderr)
         return []
-    except Exception as e:
-        print(f"[Warning] Failed to initialize KMS client: {e}. Skipping KMS scan.", file=sys.stderr)
+    except Exception:
         return []
 
     try:
-        # List keyrings project-wide by first querying locations
         locations = client.list_locations(name=f"projects/{project_id}")
         for loc in locations:
             try:
@@ -84,13 +108,16 @@ def scan_kms(project_id: str) -> list[Finding]:
                     crypto_keys = client.list_crypto_keys(parent=kr.name)
                     for key in crypto_keys:
                         algo = key.version_template.algorithm.name if key.version_template.algorithm else "UNKNOWN"
-                        # Identify classical algorithms
-                        is_classical = any(c in algo for c in ["RSA", "EC", "DSA"])
-                        status = "NON_PQC_COMPLIANT" if is_classical else "PQC_COMPLIANT"
-                        severity = "CRITICAL" if "RSA" in algo or "EC" in algo else "NONE"
-                        hndl_priority = "IMMEDIATE" if "RSA" in algo else "MEDIUM"
+                        classification = classify_algorithm(algo, "kms.CryptoKey")
+                        status = "PQC_COMPLIANT" if classification in ["NATIVE_PQC", "HYBRID"] else "NON_PQC_COMPLIANT"
                         
-                        rec = "Configure software hybrid key-wrapping pattern using classical HSM wrappers." if is_classical else "Compliant."
+                        severity = "NONE"
+                        hndl_priority = "LOW"
+                        if classification == "CLASSICAL":
+                            severity = "CRITICAL" if "RSA" in algo or "EC" in algo else "HIGH"
+                            hndl_priority = "IMMEDIATE" if "RSA" in algo else "MEDIUM"
+                        
+                        rec = "Configure software hybrid key-wrapping pattern using classical HSM wrappers." if classification == "CLASSICAL" else "Compliant."
                         
                         findings.append({
                             "resource_name": f"//cloudkms.googleapis.com/{key.name}",
@@ -100,13 +127,14 @@ def scan_kms(project_id: str) -> list[Finding]:
                             "severity": severity,
                             "recommendation": rec,
                             "hndl_priority": hndl_priority,
+                            "crypto_classification": classification,
                             "raw_metadata": {
                                 "purpose": key.purpose.name if key.purpose else "",
                                 "primary_version": key.primary.name if key.primary else ""
                             }
                         })
             except GoogleAPICallError as e:
-                print(f"[Warning] KMS list failed in location {loc.name}: {e.message}. Ensure credentials have 'cloudkms.viewer' role.", file=sys.stderr)
+                print(f"[Warning] KMS list failed in location {loc.name}: {e.message}", file=sys.stderr)
     except Exception as e:
         print(f"[Warning] Failed to query locations for KMS: {e}", file=sys.stderr)
 
@@ -119,21 +147,19 @@ def scan_ssl_policies(project_id: str) -> list[Finding]:
         from google.api_core.exceptions import GoogleAPICallError
         ssl_client = compute_v1.SslPoliciesClient()
     except ImportError:
-        print("[Warning] google-cloud-compute not installed. Skipping real SSL Policy scan.", file=sys.stderr)
         return []
-    except Exception as e:
-        print(f"[Warning] Failed to initialize SSL Policy client: {e}. Skipping SSL Policy scan.", file=sys.stderr)
+    except Exception:
         return []
 
     try:
         policies = ssl_client.list(project=project_id)
         for policy in policies:
             tls_ver = policy.min_tls_version or "UNKNOWN"
-            is_legacy = tls_ver in ["TLS_1_0", "TLS_1_1", "TLS_1_2"]
-            status = "NON_PQC_COMPLIANT" if is_legacy else "PQC_COMPLIANT"
-            severity = "HIGH" if is_legacy else "NONE"
-            hndl_priority = "HIGH" if is_legacy else "LOW"
-            rec = "Upgrade SSL Policy min TLS version to TLS 1.3 to enforce post-quantum friendly key exchanges." if is_legacy else "Compliant."
+            classification = classify_algorithm(tls_ver, "compute.SslPolicy")
+            status = "PQC_COMPLIANT" if classification == "HYBRID" else "NON_PQC_COMPLIANT"
+            severity = "HIGH" if classification == "CLASSICAL" else "NONE"
+            hndl_priority = "HIGH" if classification == "CLASSICAL" else "LOW"
+            rec = "Upgrade SSL Policy min TLS version to TLS 1.3 to enforce post-quantum friendly key exchanges." if classification == "CLASSICAL" else "Compliant."
             
             findings.append({
                 "resource_name": f"//compute.googleapis.com/projects/{project_id}/global/sslPolicies/{policy.name}",
@@ -143,13 +169,14 @@ def scan_ssl_policies(project_id: str) -> list[Finding]:
                 "severity": severity,
                 "recommendation": rec,
                 "hndl_priority": hndl_priority,
+                "crypto_classification": classification,
                 "raw_metadata": {
                     "profile": policy.profile or "",
                     "custom_features": list(policy.custom_features) if policy.custom_features else []
                 }
             })
     except GoogleAPICallError as e:
-        print(f"[Warning] Compute SSL policies query failed: {e.message}. Ensure credentials have 'compute.viewer' role.", file=sys.stderr)
+        print(f"[Warning] Compute SSL policies query failed: {e.message}", file=sys.stderr)
     except Exception as e:
         print(f"[Warning] Failed to scan SSL policies: {e}", file=sys.stderr)
 
@@ -162,22 +189,17 @@ def scan_certificates(project_id: str) -> list[Finding]:
         from google.api_core.exceptions import GoogleAPICallError
         cert_client = certificate_manager_v1.CertificateManagerClient()
     except ImportError:
-        print("[Warning] google-cloud-certificate-manager not installed. Skipping Certificate Manager scan.", file=sys.stderr)
         return []
-    except Exception as e:
-        print(f"[Warning] Failed to initialize Certificate Manager client: {e}. Skipping Cert Manager scan.", file=sys.stderr)
+    except Exception:
         return []
 
-    # Check global locations
     locations = ["global"]
     for loc in locations:
         try:
             certs = cert_client.list_certificates(parent=f"projects/{project_id}/locations/{loc}")
             for cert in certs:
-                # Retrieve public key algorithms from SANs or metadata if possible.
-                # In standard API, type can be SELF_MANAGED or MANAGED. Self-managed details can be checked.
-                # For simplified project assessment, assume standard RSA/ECDSA classical algorithm.
-                algo = "RSA_2048"  # Default assumption for legacy certs without PQC support
+                algo = "RSA_2048"
+                classification = classify_algorithm(algo, "certificatemanager.Certificate")
                 status = "NON_PQC_COMPLIANT"
                 severity = "CRITICAL"
                 hndl_priority = "IMMEDIATE"
@@ -191,13 +213,14 @@ def scan_certificates(project_id: str) -> list[Finding]:
                     "severity": severity,
                     "recommendation": rec,
                     "hndl_priority": hndl_priority,
+                    "crypto_classification": classification,
                     "raw_metadata": {
                         "scope": cert.scope.name if hasattr(cert, 'scope') and cert.scope else "",
                         "description": cert.description or ""
                     }
                 })
         except GoogleAPICallError as e:
-            print(f"[Warning] Certificate Manager query failed for {loc}: {e.message}. Ensure credentials have 'certificatemanager.viewer' role.", file=sys.stderr)
+            print(f"[Warning] Certificate Manager query failed for {loc}: {e.message}", file=sys.stderr)
         except Exception as e:
             print(f"[Warning] Failed to scan Certificate Manager: {e}", file=sys.stderr)
 
@@ -205,7 +228,6 @@ def scan_certificates(project_id: str) -> list[Finding]:
 
 def run_real_scan(project_id: str) -> list[Finding]:
     """Runs a real read-only scan against the specified project using ADC credentials."""
-    # Fail loudly on missing dependencies during real scan execution
     missing_deps = []
     try:
         import google.cloud.kms
@@ -236,20 +258,17 @@ def run_real_scan(project_id: str) -> list[Finding]:
         sys.exit(1)
 
     findings: list[Finding] = []
-    
-    # 1. KMS Scan
-    kms_findings = scan_kms(project_id)
-    findings.extend(kms_findings)
-    
-    # 2. SSL Policies Scan
-    ssl_findings = scan_ssl_policies(project_id)
-    findings.extend(ssl_findings)
-    
-    # 3. Certificates Scan
-    cert_findings = scan_certificates(project_id)
-    findings.extend(cert_findings)
-
+    findings.extend(scan_kms(project_id))
+    findings.extend(scan_ssl_policies(project_id))
+    findings.extend(scan_certificates(project_id))
     return findings
+
+def calculate_maturity_score(findings: list[Finding]) -> int:
+    """Computes the percentage of assets that are NATIVE_PQC or HYBRID."""
+    if not findings:
+        return 0
+    ready = sum(1 for f in findings if f.get("crypto_classification") in ["NATIVE_PQC", "HYBRID"])
+    return int((ready / len(findings)) * 100)
 
 def generate_cbom(findings: list[Finding]) -> dict:
     """Generates CycloneDX 1.6+ Cryptographic Bill of Materials (CBOM) document."""
@@ -258,11 +277,11 @@ def generate_cbom(findings: list[Finding]) -> dict:
         custom_props = {
             "pqc:status": f.get("status"),
             "pqc:severity": f.get("severity"),
-            "pqc:hndl-priority": f.get("hndl_priority")
+            "pqc:hndl-priority": f.get("hndl_priority"),
+            "pqc:classification": f.get("crypto_classification")
         }
         properties = [{"name": k, "value": v} for k, v in custom_props.items() if v]
         
-        # Determine unique reference name
         res_name = f.get("resource_name", "")
         base_name = res_name.split("/")[-1] if "/" in res_name else "unknown"
         res_type = f.get("resource_type", "")
@@ -323,7 +342,7 @@ def export_to_csv(findings: list[Finding], output_csv_path: str):
     try:
         with open(output_csv_path, mode="w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow(["Resource", "Type", "Algorithm", "Status", "Severity", "Recommendation", "HNDL Priority"])
+            writer.writerow(["Resource", "Type", "Algorithm", "Status", "Severity", "Recommendation", "HNDL Priority", "Classification"])
             for finding in findings:
                 writer.writerow([
                     finding["resource_name"],
@@ -332,7 +351,8 @@ def export_to_csv(findings: list[Finding], output_csv_path: str):
                     finding["status"],
                     finding["severity"],
                     finding["recommendation"],
-                    finding["hndl_priority"]
+                    finding["hndl_priority"],
+                    finding["crypto_classification"]
                 ])
         print(f"Compliance report saved to CSV: {output_csv_path}")
     except Exception as e:
@@ -346,9 +366,7 @@ def main():
     parser.add_argument("--cbom-output", default="pqc_cbom.json", help="Path to save generated CycloneDX 1.6+ CBOM report.")
     args = parser.parse_args()
 
-    # Check CLI options
     if not args.demo and not args.project:
-        # Try retrieving project ID from environment if not specified
         project_id = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("GCP_PROJECT")
         if not project_id:
             print("[Error] Please specify a target project using --project <project_id> or run with --demo.", file=sys.stderr)
@@ -362,15 +380,20 @@ def main():
     else:
         findings = run_real_scan(project_id)
 
+    # Compute PQC Maturity Score
+    maturity_score = calculate_maturity_score(findings)
+
     # Print results to stdout as formatted table
     print("\n### GCP Post-Quantum Cryptography Compliance Report")
-    print("-" * 140)
-    print(f"{'Resource Name':<60} | {'Type':<25} | {'Status':<15} | {'Severity':<10} | {'HNDL Priority':<15}")
-    print("-" * 140)
+    print("-" * 155)
+    print(f"{'Resource Name':<55} | {'Type':<22} | {'Status':<15} | {'Severity':<10} | {'Classification':<15} | {'HNDL Priority':<15}")
+    print("-" * 155)
     for f in findings:
-        truncated_name = f['resource_name'][-60:]
-        print(f"{truncated_name:<60} | {f['resource_type']:<25} | {f['status']:<15} | {f['severity']:<10} | {f['hndl_priority']:<15}")
-    print("-" * 140)
+        truncated_name = f['resource_name'][-55:]
+        print(f"{truncated_name:<55} | {f['resource_type']:<22} | {f['status']:<15} | {f['severity']:<10} | {f['crypto_classification']:<15} | {f['hndl_priority']:<15}")
+    print("-" * 155)
+    print(f"[*] Project PQC Maturity Score: {maturity_score}%")
+    print("-" * 155)
 
     # Save output structured report
     with open("pqc_compliance_report.json", "w", encoding="utf-8") as out:
@@ -384,10 +407,8 @@ def main():
             json.dump(cbom, out, indent=2)
         print(f"CycloneDX 1.6+ CBOM report saved to: {args.cbom_output}")
 
-    # CSV export
     if args.bq_export_sim:
         export_to_csv(findings, args.bq_export_sim)
 
 if __name__ == "__main__":
     main()
-

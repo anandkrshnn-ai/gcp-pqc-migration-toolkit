@@ -21,6 +21,7 @@ dependencies = [
     "cirq>=1.1.0",
     "streamlit>=1.20.0",
     "pandas",
+    "cryptography>=41.0.0",
 ]
 
 [project.optional-dependencies]

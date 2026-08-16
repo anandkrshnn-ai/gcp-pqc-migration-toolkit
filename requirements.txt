@@ -12,3 +12,4 @@ google-auth>=2.15.0
 
 # Development
 pytest>=7.0.0
+cryptography>=41.0.0

@@ -7,8 +7,10 @@ from unittest.mock import MagicMock, patch
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scanners')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'simulation')))
 
-from gcp_pqc_inventory_scanner import DEFAULT_MOCK_ASSETS, export_to_csv, generate_cbom
+from gcp_pqc_inventory_scanner import DEFAULT_MOCK_ASSETS, export_to_csv, generate_cbom, calculate_maturity_score
 from cirq_quantum_estimator import estimate_shors_requirements, simulate_toy_quantum_step, get_hndl_priority
+from report_attester import sign_findings_report
+from verify_report import verify_signed_report
 
 def test_cbom_generation():
     cbom = generate_cbom(DEFAULT_MOCK_ASSETS)
@@ -93,3 +95,33 @@ def test_real_scan_authentication_failure(mock_auth):
     from gcp_pqc_inventory_scanner import run_real_scan
     with pytest.raises(SystemExit):
         run_real_scan("invalid-project")
+
+def test_maturity_score_calculation():
+    test_findings = [
+        {"crypto_classification": "CLASSICAL"},
+        {"crypto_classification": "NATIVE_PQC"},
+        {"crypto_classification": "HYBRID"},
+        {"crypto_classification": "CLASSICAL"}
+    ]
+    # 2 out of 4 are ready -> 50%
+    score = calculate_maturity_score(test_findings)
+    assert score == 50
+
+def test_report_attestation_success():
+    signed_envelope = sign_findings_report(DEFAULT_MOCK_ASSETS)
+    assert "payload" in signed_envelope
+    assert "signature" in signed_envelope
+    assert "publicKey" in signed_envelope
+    
+    # Verify signature
+    is_valid = verify_signed_report(signed_envelope)
+    assert is_valid is True
+
+def test_report_attestation_tampering():
+    signed_envelope = sign_findings_report(DEFAULT_MOCK_ASSETS)
+    # Modify payload data to simulate tampering
+    signed_envelope["payload"][0]["recommendation"] = "Tampered recommendation text"
+    
+    is_valid = verify_signed_report(signed_envelope)
+    assert is_valid is False
+

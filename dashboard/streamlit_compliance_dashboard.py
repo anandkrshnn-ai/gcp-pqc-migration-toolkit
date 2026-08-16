@@ -42,64 +42,100 @@ st.markdown("""
 st.title("🛡️ GCP Post-Quantum Cryptography Migration Dashboard")
 st.markdown("Assess readiness, analyze HNDL threats, and plan cryptographic migration schedules for GCP projects.")
 
+# Setup sys.path to import verification modules
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scanners')))
+from verify_report import verify_signed_report
+
 # Sidebar for controls & upload
 st.sidebar.header("📁 Report Source")
-uploaded_file = st.sidebar.file_uploader("Upload pqc_compliance_report.json", type=["json"])
+uploaded_file = st.sidebar.file_uploader("Upload pqc_compliance_report.json / signed.json", type=["json"])
 
 findings_file = "pqc_compliance_report.json"
+signed_file = "pqc_compliance_report.signed.json"
 findings: list[Dict[str, Any]] = []
+attestation_status = "Unsigned"
 
+def process_loaded_data(data):
+    global findings, attestation_status
+    if isinstance(data, dict) and "payload" in data and "signature" in data and "publicKey" in data:
+        # It is a signed report envelope
+        findings = data["payload"]
+        is_valid = verify_signed_report(data)
+        if is_valid:
+            attestation_status = "Verified"
+        else:
+            attestation_status = "Invalid/Tampered"
+    else:
+        # Raw compliance report
+        findings = data
+        attestation_status = "Unsigned"
+
+# Load report from upload or default files
 if uploaded_file is not None:
     try:
-        findings = json.load(uploaded_file)
-        st.sidebar.success("Loaded uploaded report.")
+        raw_data = json.load(uploaded_file)
+        process_loaded_data(raw_data)
+        if attestation_status == "Verified":
+            st.sidebar.success("✅ Signature Verified. Untampered report.")
+        elif attestation_status == "Invalid/Tampered":
+            st.sidebar.error("❌ INVALID SIGNATURE! Report tampered.")
+        else:
+            st.sidebar.info("Loaded unsigned report.")
     except Exception as e:
         st.sidebar.error(f"Failed to load file: {e}")
-elif os.path.exists(findings_file):
-    try:
-        with open(findings_file, "r", encoding="utf-8") as f:
-            findings = json.load(f)
-    except Exception:
-        pass
+else:
+    # Try signed file first
+    loaded = False
+    for filename in [signed_file, findings_file]:
+        if os.path.exists(filename):
+            try:
+                with open(filename, "r", encoding="utf-8") as f:
+                    raw_data = json.load(f)
+                    process_loaded_data(raw_data)
+                    loaded = True
+                    break
+            except Exception:
+                pass
+    if not loaded:
+        # Fallback defaults if no file is present
+        findings = [
+            {
+                "resource_name": "//cloudkms.googleapis.com/projects/pqc-demo-project/locations/us-central1/keyRings/ring-1/cryptoKeys/legacy-key-rsa",
+                "resource_type": "kms.CryptoKey",
+                "algorithm": "RSA_SIGN_PKCS1_2048_SHA256",
+                "status": "NON_PQC_COMPLIANT",
+                "severity": "CRITICAL",
+                "recommendation": "Configure software hybrid key-wrapping pattern using classical HSM wrappers.",
+                "hndl_priority": "IMMEDIATE",
+                "crypto_classification": "CLASSICAL",
+                "raw_metadata": {}
+            },
+            {
+                "resource_name": "//cloudkms.googleapis.com/projects/pqc-demo-project/locations/us-central1/keyRings/ring-1/cryptoKeys/pqc-wrapped-hybrid",
+                "resource_type": "kms.CryptoKey",
+                "algorithm": "GOOGLE_SYMMETRIC_ENCRYPTION",
+                "status": "PQC_COMPLIANT",
+                "severity": "NONE",
+                "recommendation": "Compliant.",
+                "hndl_priority": "LOW",
+                "crypto_classification": "HYBRID",
+                "raw_metadata": {}
+            }
+        ]
 
-# Fallback defaults if no report is loaded
-if not findings:
-    findings = [
-        {
-            "resource_name": "//cloudkms.googleapis.com/projects/pqc-demo-project/locations/us-central1/keyRings/ring-1/cryptoKeys/legacy-key-rsa",
-            "resource_type": "kms.CryptoKey",
-            "algorithm": "RSA_SIGN_PKCS1_2048_SHA256",
-            "status": "NON_PQC_COMPLIANT",
-            "severity": "CRITICAL",
-            "recommendation": "Configure software hybrid key-wrapping pattern using classical HSM wrappers.",
-            "hndl_priority": "IMMEDIATE",
-            "raw_metadata": {}
-        },
-        {
-            "resource_name": "//cloudkms.googleapis.com/projects/pqc-demo-project/locations/us-central1/keyRings/ring-1/cryptoKeys/pqc-wrapped-hybrid",
-            "resource_type": "kms.CryptoKey",
-            "algorithm": "GOOGLE_SYMMETRIC_ENCRYPTION",
-            "status": "PQC_COMPLIANT",
-            "severity": "NONE",
-            "recommendation": "Compliant.",
-            "hndl_priority": "LOW",
-            "raw_metadata": {}
-        },
-        {
-            "resource_name": "//compute.googleapis.com/projects/pqc-demo-project/global/sslPolicies/legacy-tls-policy",
-            "resource_type": "compute.SslPolicy",
-            "algorithm": "TLS_1_1",
-            "status": "NON_PQC_COMPLIANT",
-            "severity": "HIGH",
-            "recommendation": "Upgrade SSL Policy min TLS version to TLS 1.3 to enforce post-quantum friendly key exchanges.",
-            "hndl_priority": "HIGH",
-            "raw_metadata": {}
-        }
-    ]
+# Display attestation badge in the sidebar
+st.sidebar.markdown("### Attestation Metadata")
+if attestation_status == "Verified":
+    st.sidebar.markdown("**Status:** :green[✅ Verified Attested Report]")
+elif attestation_status == "Invalid/Tampered":
+    st.sidebar.markdown("**Status:** :red[❌ TAMPERED / INVALID]")
+else:
+    st.sidebar.markdown("**Status:** :orange[⚠️ Unsigned]")
 
 # Summary metrics
 total_assets = len(findings)
-compliant_count = sum(1 for f in findings if f.get("status") == "PQC_COMPLIANT")
+compliant_count = sum(1 for f in findings if f.get("crypto_classification") in ["NATIVE_PQC", "HYBRID"])
 non_compliant_count = total_assets - compliant_count
 critical_count = sum(1 for f in findings if f.get("severity") == "CRITICAL")
 pqc_ready_percentage = int((compliant_count / total_assets) * 100) if total_assets > 0 else 0
@@ -108,11 +144,11 @@ m1, m2, m3, m4 = st.columns(4)
 with m1:
     st.metric("Inspected Assets", total_assets)
 with m2:
-    st.metric("PQC Compliant", compliant_count)
+    st.metric("PQC Compliant / Hybrid", compliant_count)
 with m3:
     st.metric("Critical Quantum Risks", critical_count)
 with m4:
-    st.metric("PQC Readiness Score", f"{pqc_ready_percentage}%")
+    st.metric("PQC Maturity Score", f"{pqc_ready_percentage}%")
 
 st.markdown("---")
 
@@ -139,12 +175,13 @@ with left_col:
         res_type = html.escape(f.get('resource_type', ''))
         algo = html.escape(f.get('algorithm', ''))
         hndl_pri = html.escape(f.get('hndl_priority', 'MEDIUM'))
+        classification = html.escape(f.get('crypto_classification', 'CLASSICAL'))
         rec = html.escape(f.get('recommendation', ''))
         
         st.markdown(f"""
         <div class="{card_class}">
             <h4>Resource: <code>{res_name}</code></h4>
-            <p><b>Type:</b> <code>{res_type}</code> | <b>Algorithm:</b> <code>{algo}</code></p>
+            <p><b>Type:</b> <code>{res_type}</code> | <b>Algorithm:</b> <code>{algo}</code> | <b>Classification:</b> <code>{classification}</code></p>
             <p><b>Readiness Status:</b> <span style="color:{status_color}; font-weight:bold;">{status_label}</span> (Severity: <b>{sev}</b> | HNDL Priority: <b>{hndl_pri}</b>)</p>
             <p><b>Recommendation:</b> {rec}</p>
         </div>
@@ -156,7 +193,6 @@ with right_col:
     # Export Actions
     st.write("### Export Scans")
     
-    # Create Dataframe for exports
     df = pd.DataFrame(findings)
     if not df.empty and "raw_metadata" in df.columns:
         df = df.drop(columns=["raw_metadata"])
@@ -166,12 +202,13 @@ with right_col:
     
     # Markdown exporter logic
     md_report = "# GCP Post-Quantum Migration Audit Report\n\n"
-    md_report += f"**Overall Readiness**: {pqc_ready_percentage}%\n"
+    md_report += f"**PQC Maturity Score**: {pqc_ready_percentage}%\n"
     md_report += f"**Total Audited**: {total_assets} | **Compliant**: {compliant_count} | **Non-Compliant**: {non_compliant_count}\n\n"
     md_report += "## Findings Registry\n"
     for f in findings:
         md_report += f"### Resource: `{f.get('resource_name')}`\n"
         md_report += f"- **Type**: `{f.get('resource_type')}`\n"
+        md_report += f"- **Classification**: `{f.get('crypto_classification')}`\n"
         md_report += f"- **Status**: {f.get('status')} (Severity: {f.get('severity')})\n"
         md_report += f"- **Recommendation**: {f.get('recommendation')}\n\n"
     
@@ -181,8 +218,6 @@ with right_col:
     
     # CycloneDX 1.6+ CBOM Exporter
     try:
-        import sys
-        sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scanners')))
         from gcp_pqc_inventory_scanner import generate_cbom
         cbom_dict = generate_cbom(findings)
         cbom_json_data = json.dumps(cbom_dict, indent=2).encode('utf-8')
@@ -190,11 +225,19 @@ with right_col:
     except Exception as e:
         st.warning(f"Failed to load CBOM exporter: {e}")
     
+    # Verifiable Signed Report Exporter
+    try:
+        from report_attester import sign_findings_report
+        signed_dict = sign_findings_report(findings)
+        signed_json_data = json.dumps(signed_dict, indent=2).encode('utf-8')
+        st.download_button("Download Verifiable Signed Report JSON", signed_json_data, "pqc_compliance_report.signed.json", "application/json")
+    except Exception as e:
+        st.warning(f"Failed to load attestation signer: {e}")
+
     st.markdown("---")
     st.write("### HNDL Risk Prioritization Index")
     st.info("Prioritize keys wrapping long-lived sensitive datasets (Data Longevity > 5 years) first, as they are targets of Harvest Now, Decrypt Later campaigns.")
     
-    # Simple interactive calculation helper
     longevity = st.slider("Target Data Longevity (Years)", min_value=1, max_value=30, value=10)
     if longevity >= 10:
         st.error("Priority: IMMEDIATE. Implement hybrid wrap policies immediately.")

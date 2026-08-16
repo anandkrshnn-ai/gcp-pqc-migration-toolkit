@@ -25,4 +25,8 @@ Thumbs.db
 
 # Generated compliance reports
 pqc_inventory_export.csv
+pqc_compliance_report.json
+pqc_compliance_report.signed.json
+pqc_cbom.json
+*.pem
 
