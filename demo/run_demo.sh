@@ -26,6 +26,11 @@ echo "[Step 4] Cryptographically verifying the signed report envelope..."
 python scanners/verify_report.py
 
 echo ""
+# 5. Generate Policy-as-Code remediations
+echo "[Step 5] Auto-generating Policy-as-Code & remediation assets..."
+python scanners/pqc_remediator.py --report pqc_compliance_report.json --output-dir remediation
+
+echo ""
 echo "======================================================================"
 echo "✅ PQC Verification & Attestation Demo Executed Successfully."
 echo "======================================================================"

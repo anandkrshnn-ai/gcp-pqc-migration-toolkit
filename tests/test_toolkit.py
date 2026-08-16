@@ -185,4 +185,49 @@ def test_drift_regression_detection():
     assert drift_res["new_maturity_score"] == 0
     assert "key-1" in drift_res["downgraded_assets"]
 
+def test_remediator_policy_generation():
+    from pqc_remediator import generate_remediation_plan
+    import shutil
+    
+    test_findings = [
+        {
+            "resource_name": "key-1",
+            "resource_type": "kms.CryptoKey",
+            "algorithm": "RSA_2048",
+            "status": "NON_PQC_COMPLIANT",
+            "severity": "CRITICAL",
+            "recommendation": "Migrate",
+            "hndl_priority": "IMMEDIATE",
+            "crypto_classification": "CLASSICAL"
+        },
+        {
+            "resource_name": "policy-1",
+            "resource_type": "compute.SslPolicy",
+            "algorithm": "TLS_1_1",
+            "status": "NON_PQC_COMPLIANT",
+            "severity": "HIGH",
+            "recommendation": "Upgrade",
+            "hndl_priority": "HIGH",
+            "crypto_classification": "CLASSICAL"
+        }
+    ]
+    
+    tmp_out = "test_remediation_out"
+    try:
+        generate_remediation_plan(test_findings, tmp_out)
+        assert os.path.exists(os.path.join(tmp_out, "remediate_infra.tf"))
+        assert os.path.exists(os.path.join(tmp_out, "remediate_org_policies.tf"))
+        assert os.path.exists(os.path.join(tmp_out, "remediate.sh"))
+        assert os.path.exists(os.path.join(tmp_out, "remediation_plan.md"))
+        
+        # Verify content highlights
+        with open(os.path.join(tmp_out, "remediate_infra.tf"), "r", encoding="utf-8") as f:
+            content = f.read()
+            assert "google_kms_crypto_key" in content
+            assert "google_compute_ssl_policy" in content
+    finally:
+        if os.path.exists(tmp_out):
+            shutil.rmtree(tmp_out)
+
+
 

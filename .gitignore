@@ -30,4 +30,5 @@ pqc_compliance_report.signed.json
 pqc_cbom.json
 *.pem
 pqc_drift_history.db
+remediation/
 

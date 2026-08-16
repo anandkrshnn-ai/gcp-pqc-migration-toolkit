@@ -249,6 +249,38 @@ with tab1:
         else:
             st.success("Priority: MEDIUM/LOW. Schedule transition in standard roadmap.")
 
+        st.markdown("---")
+        # Policy-as-Code Remediation Panel
+        st.write("### 🏗️ Policy-as-Code (PaC) Remediation")
+        st.info("Generate and download Terraform configurations, Org Policies, and gcloud scripts to repair non-compliant keys.")
+        
+        try:
+            sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scanners')))
+            from pqc_remediator import generate_remediation_plan
+            import tempfile
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                generate_remediation_plan(findings, tmp_dir)
+                
+                with open(os.path.join(tmp_dir, "remediate_infra.tf"), "r", encoding="utf-8") as f_in:
+                    tf_infra_val = f_in.read()
+                with open(os.path.join(tmp_dir, "remediate_org_policies.tf"), "r", encoding="utf-8") as f_in:
+                    tf_policies_val = f_in.read()
+                with open(os.path.join(tmp_dir, "remediate.sh"), "r", encoding="utf-8") as f_in:
+                    sh_val = f_in.read()
+                with open(os.path.join(tmp_dir, "remediation_plan.md"), "r", encoding="utf-8") as f_in:
+                    plan_md_val = f_in.read()
+                    
+                st.download_button("Download Remediation Terraform (Infra)", tf_infra_val.encode('utf-8'), "remediate_infra.tf", "text/plain")
+                st.download_button("Download Remediation Org Policies", tf_policies_val.encode('utf-8'), "remediate_org_policies.tf", "text/plain")
+                st.download_button("Download Remediation Shell Script (gcloud)", sh_val.encode('utf-8'), "remediate.sh", "application/x-sh")
+                
+                # Show a preview of the Remediation Plan in an expander
+                with st.expander("🔍 View Remediation Plan Preview"):
+                    st.markdown(plan_md_val)
+        except Exception as e:
+            st.warning(f"Failed to generate remediation plan: {e}")
+
+
 with tab2:
     st.subheader("📈 PQC Maturity & Posture Trends")
     st.markdown("Track post-quantum posture adjustments, key rotations, and compliance levels across scanner runs.")

@@ -72,7 +72,7 @@ def main():
         sys.exit(1)
 
     print("\n========================================================")
-    print("🛡️ Shor's Algorithm Resource Estimation & HNDL Risk Analyzer")
+    print("Shor's Algorithm Resource Estimation & HNDL Risk Analyzer")
     print("========================================================")
     print(f"Algorithm Profile: {'ECC' if args.ecc else 'RSA'}")
     print(f"Key Bit Depth: {args.bits}")

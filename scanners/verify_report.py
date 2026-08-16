@@ -63,10 +63,10 @@ def main():
     is_valid = verify_signed_report(signed_envelope)
     
     if is_valid:
-        print("✅ Cryptographic Signature: VALID. Report contents are untampered and verified.")
+        print("[SUCCESS] Cryptographic Signature: VALID. Report contents are untampered and verified.")
         sys.exit(0)
     else:
-        print("❌ Cryptographic Signature: INVALID. Report contents have been tampered with or modified!", file=sys.stderr)
+        print("[ERROR] Cryptographic Signature: INVALID. Report contents have been tampered with or modified!", file=sys.stderr)
         sys.exit(1)
 
 if __name__ == "__main__":
