@@ -205,6 +205,26 @@ def scan_certificates(project_id: str) -> list[Finding]:
 
 def run_real_scan(project_id: str) -> list[Finding]:
     """Runs a real read-only scan against the specified project using ADC credentials."""
+    # Fail loudly on missing dependencies during real scan execution
+    missing_deps = []
+    try:
+        import google.cloud.kms
+    except ImportError:
+        missing_deps.append("google-cloud-kms")
+    try:
+        import google.cloud.compute
+    except ImportError:
+        missing_deps.append("google-cloud-compute")
+    try:
+        import google.cloud.certificate_manager
+    except ImportError:
+        missing_deps.append("google-cloud-certificate-manager")
+
+    if missing_deps:
+        print(f"[Error] Missing required client libraries for real scan: {', '.join(missing_deps)}", file=sys.stderr)
+        print("Please run: pip install -e .[gcp]", file=sys.stderr)
+        sys.exit(1)
+
     print(f"[*] Starting project-scoped scan for project: {project_id}")
     try:
         import google.auth

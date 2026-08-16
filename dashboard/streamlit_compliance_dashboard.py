@@ -2,7 +2,8 @@ import streamlit as st
 import json
 import os
 import pandas as pd
-from typing import list, Dict, Any
+import html
+from typing import List, Dict, Any
 
 # Set page configurations
 st.set_page_config(
@@ -36,7 +37,7 @@ st.markdown("""
         border-left: 5px solid #10b981;
     }
 </style>
-""", unsafe_allowed_value=True)
+""", unsafe_allow_html=True)
 
 st.title("🛡️ GCP Post-Quantum Cryptography Migration Dashboard")
 st.markdown("Assess readiness, analyze HNDL threats, and plan cryptographic migration schedules for GCP projects.")
@@ -125,7 +126,7 @@ with left_col:
     filter_severity = st.multiselect("Filter by Severity", options=["CRITICAL", "HIGH", "MEDIUM", "NONE"], default=["CRITICAL", "HIGH", "MEDIUM", "NONE"])
     
     for f in findings:
-        sev = f.get("severity", "NONE")
+        sev = html.escape(f.get("severity", "NONE"))
         if sev not in filter_severity:
             continue
             
@@ -134,12 +135,18 @@ with left_col:
         status_label = "PQC COMPLIANT" if is_compliant else "NON-COMPLIANT"
         status_color = "green" if is_compliant else "red"
         
+        res_name = html.escape(f.get('resource_name', ''))
+        res_type = html.escape(f.get('resource_type', ''))
+        algo = html.escape(f.get('algorithm', ''))
+        hndl_pri = html.escape(f.get('hndl_priority', 'MEDIUM'))
+        rec = html.escape(f.get('recommendation', ''))
+        
         st.markdown(f"""
         <div class="{card_class}">
-            <h4>Resource: <code>{f.get('resource_name')}</code></h4>
-            <p><b>Type:</b> <code>{f.get('resource_type')}</code> | <b>Algorithm:</b> <code>{f.get('algorithm')}</code></p>
-            <p><b>Readiness Status:</b> <span style="color:{status_color}; font-weight:bold;">{status_label}</span> (Severity: <b>{sev}</b> | HNDL Priority: <b>{f.get('hndl_priority', 'MEDIUM')}</b>)</p>
-            <p><b>Recommendation:</b> {f.get('recommendation')}</p>
+            <h4>Resource: <code>{res_name}</code></h4>
+            <p><b>Type:</b> <code>{res_type}</code> | <b>Algorithm:</b> <code>{algo}</code></p>
+            <p><b>Readiness Status:</b> <span style="color:{status_color}; font-weight:bold;">{status_label}</span> (Severity: <b>{sev}</b> | HNDL Priority: <b>{hndl_pri}</b>)</p>
+            <p><b>Recommendation:</b> {rec}</p>
         </div>
         """, unsafe_allow_html=True)
 

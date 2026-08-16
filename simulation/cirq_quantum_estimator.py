@@ -76,7 +76,7 @@ def main():
     print("========================================================")
     print(f"Algorithm Profile: {'ECC' if args.ecc else 'RSA'}")
     print(f"Key Bit Depth: {args.bits}")
-    print(f"Required Data Longevity: {args.data-longevity} years")
+    print(f"Required Data Longevity: {args.data_longevity} years")
     
     logical, physical, depth = estimate_shors_requirements(args.bits, args.ecc)
     
