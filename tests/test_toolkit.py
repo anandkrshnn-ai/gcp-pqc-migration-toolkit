@@ -229,5 +229,28 @@ def test_remediator_policy_generation():
         if os.path.exists(tmp_out):
             shutil.rmtree(tmp_out)
 
+def test_ci_orchestrator_pr_body_formatting():
+    from ci_orchestrator import format_pr_body
+    
+    test_findings = [
+        {
+            "resource_name": "//cloudkms.googleapis.com/projects/pqc-demo-project/locations/us-central1/keyRings/ring-1/cryptoKeys/legacy-key-rsa",
+            "resource_type": "kms.CryptoKey",
+            "algorithm": "RSA_2048",
+            "status": "NON_PQC_COMPLIANT",
+            "severity": "CRITICAL",
+            "recommendation": "Migrate",
+            "hndl_priority": "IMMEDIATE",
+            "crypto_classification": "CLASSICAL"
+        }
+    ]
+    
+    pr_body = format_pr_body(test_findings)
+    assert "Post-Quantum Cryptography (PQC) Auto-Remediation Plan" in pr_body
+    assert "remediate_infra.tf" in pr_body
+    assert "kms.CryptoKey" in pr_body
+    assert "legacy-key-rsa" in pr_body
+
+
 
 

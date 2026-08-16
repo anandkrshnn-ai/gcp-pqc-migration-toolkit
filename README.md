@@ -116,7 +116,22 @@ streamlit run dashboard/streamlit_compliance_dashboard.py
 
 ---
 
-## 5. Security & IAM Considerations
+## 5. CI/CD Integration & Auto-Remediation
+
+This toolkit includes an automated GitHub Action workflow `.github/workflows/pqc-scan-and-remediate.yml` that schedules weekly compliance scans against your target projects.
+
+### Setup Pull Request Automation:
+1. Ensure the `gh` CLI is installed and authenticated in your environment (or uses `GITHUB_TOKEN` inside GitHub Actions).
+2. Configure GCP Service Account credentials as GitHub secrets if running scans against live project resources.
+3. The pipeline will:
+   - Run the PQC scanner to audit KMS keys, SSL policies, and certificates.
+   - Detect compliance drift vs. previous baseline snapshots.
+   - Stage and commit Policy-as-Code Terraform updates to a patch branch.
+   - Open a **Pull Request** detailing the classical algorithms requiring rotation.
+
+---
+
+## 6. Security & IAM Considerations
 
 The scanner runs with read-only permissions and does not modify resources. To scan a project, the executing credential (user or service account) requires:
 - `cloudkms.viewer`
@@ -125,7 +140,7 @@ The scanner runs with read-only permissions and does not modify resources. To sc
 
 ---
 
-## 6. Future Roadmap
+## 7. Future Roadmap
 
 Aspirational stages for full automation:
 
@@ -155,5 +170,5 @@ graph TD
 
 ---
 
-## 7. Known Operational Limitations
+## 8. Known Operational Limitations
 For a detailed breakdown of GCP API limits, Cloud KMS PQC support statuses, and Shor algorithm simulation thresholds, refer to the [LIMITATIONS.md](LIMITATIONS.md) file at the root.

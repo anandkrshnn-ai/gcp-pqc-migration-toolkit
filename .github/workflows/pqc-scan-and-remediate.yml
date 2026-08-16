@@ -1,0 +1,67 @@
+name: GCP PQC Scan & Remediation
+
+on:
+  schedule:
+    - cron: '0 0 * * 1' # Runs weekly on Mondays at 00:00 UTC
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: 'Target GCP Project ID'
+        required: true
+        default: 'pqc-demo-project'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  pqc-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -e .[gcp]
+
+      - name: Authenticate to Google Cloud
+        # Skip credential load in dummy/mock modes; configure real service account key if running real project scans
+        id: 'auth'
+        uses: 'google-github-actions/auth@v2'
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+        continue-on-error: true
+
+      - name: Run PQC Inventory Scan
+        run: |
+          # If credentials failed, default run in --demo mode to showcase workflow
+          if [ "${{ steps.auth.outputs.project_id }}" != "" ]; then
+            python scanners/gcp_pqc_inventory_scanner.py --project ${{ steps.auth.outputs.project_id }}
+          else
+            echo "[*] Google Cloud authentication missing or failed. Defaulting to PQC --demo scan..."
+            python scanners/gcp_pqc_inventory_scanner.py --demo
+          fi
+
+      - name: Generate Remediation Artifacts
+        run: |
+          python scanners/pqc_remediator.py --report pqc_compliance_report.json --output-dir remediation
+
+      - name: Run CI Orchestrator & Open Auto-Remediation PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Setup git config
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          # Execute PR orchestrator
+          python scanners/ci_orchestrator.py
