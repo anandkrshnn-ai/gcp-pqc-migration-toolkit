@@ -172,6 +172,17 @@ with right_col:
     st.download_button("Download JSON Report", json_data, "pqc_audit_report.json", "application/json")
     st.download_button("Download Markdown Audit Summary", md_report.encode('utf-8'), "pqc_audit_report.md", "text/markdown")
     
+    # CycloneDX 1.6+ CBOM Exporter
+    try:
+        import sys
+        sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scanners')))
+        from gcp_pqc_inventory_scanner import generate_cbom
+        cbom_dict = generate_cbom(findings)
+        cbom_json_data = json.dumps(cbom_dict, indent=2).encode('utf-8')
+        st.download_button("Download CycloneDX 1.6+ CBOM JSON", cbom_json_data, "pqc_cbom.json", "application/json")
+    except Exception as e:
+        st.warning(f"Failed to load CBOM exporter: {e}")
+    
     st.markdown("---")
     st.write("### HNDL Risk Prioritization Index")
     st.info("Prioritize keys wrapping long-lived sensitive datasets (Data Longevity > 5 years) first, as they are targets of Harvest Now, Decrypt Later campaigns.")

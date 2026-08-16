@@ -3,6 +3,7 @@ import sys
 import json
 import csv
 import argparse
+import uuid
 from typing import Dict, Any, TypedDict
 
 # Stable Finding schema definitions
@@ -230,6 +231,73 @@ def run_real_scan(project_id: str) -> list[Finding]:
 
     return findings
 
+def generate_cbom(findings: list[Finding]) -> dict:
+    """Generates CycloneDX 1.6+ Cryptographic Bill of Materials (CBOM) document."""
+    components = []
+    for f in findings:
+        custom_props = {
+            "pqc:status": f.get("status"),
+            "pqc:severity": f.get("severity"),
+            "pqc:hndl-priority": f.get("hndl_priority")
+        }
+        properties = [{"name": k, "value": v} for k, v in custom_props.items() if v]
+        
+        # Determine unique reference name
+        res_name = f.get("resource_name", "")
+        base_name = res_name.split("/")[-1] if "/" in res_name else "unknown"
+        res_type = f.get("resource_type", "")
+        type_prefix = res_type.split(".")[0] if "." in res_type else "unknown"
+        
+        component = {
+            "name": res_name,
+            "type": "cryptographic-asset",
+            "bom-ref": f"crypto/{type_prefix}/{base_name}",
+            "description": f.get("recommendation"),
+            "properties": properties
+        }
+        
+        crypto_props = {}
+        algo = f.get("algorithm", "")
+        
+        if res_type == "kms.CryptoKey":
+            crypto_props = {
+                "assetType": "algorithm",
+                "algorithmProperties": {
+                    "primitive": "signature" if "SIGN" in algo else "encryption",
+                    "algorithmFamily": algo.split("_")[0] if "_" in algo else algo,
+                    "parameterSetIdentifier": algo.split("_")[-2] if len(algo.split("_")) > 2 else "256"
+                }
+            }
+        elif res_type == "compute.SslPolicy":
+            crypto_props = {
+                "assetType": "protocol",
+                "protocolProperties": {
+                    "type": "tls",
+                    "version": algo.replace("TLS_", "").replace("_", ".") if algo.startswith("TLS_") else algo
+                }
+            }
+        elif res_type == "certificatemanager.Certificate":
+            crypto_props = {
+                "assetType": "certificate",
+                "certificateProperties": {
+                    "certificateFormat": "X.509",
+                    "signatureAlgorithmRef": f"crypto/algorithm/{algo.lower()}"
+                }
+            }
+            
+        if crypto_props:
+            component["cryptoProperties"] = crypto_props
+            
+        components.append(component)
+        
+    return {
+        "bomFormat": "CycloneDX",
+        "specVersion": "1.6",
+        "serialNumber": f"urn:uuid:{uuid.uuid4()}",
+        "version": 1,
+        "components": components
+    }
+
 def export_to_csv(findings: list[Finding], output_csv_path: str):
     """Saves structured findings to a CSV file."""
     try:
@@ -255,6 +323,7 @@ def main():
     parser.add_argument("--project", help="The target GCP Project ID to scan.")
     parser.add_argument("--demo", action="store_true", help="Run simulated scan using static mock data with zero credentials.")
     parser.add_argument("--bq-export-sim", default="pqc_inventory_export.csv", help="Simulate BigQuery export output CSV path.")
+    parser.add_argument("--cbom-output", default="pqc_cbom.json", help="Path to save generated CycloneDX 1.6+ CBOM report.")
     args = parser.parse_args()
 
     # Check CLI options
@@ -288,9 +357,17 @@ def main():
         json.dump(findings, out, indent=2)
     print("Report saved to: pqc_compliance_report.json")
 
+    # Save CycloneDX 1.6+ CBOM Report
+    if args.cbom_output:
+        cbom = generate_cbom(findings)
+        with open(args.cbom_output, "w", encoding="utf-8") as out:
+            json.dump(cbom, out, indent=2)
+        print(f"CycloneDX 1.6+ CBOM report saved to: {args.cbom_output}")
+
     # CSV export
     if args.bq_export_sim:
         export_to_csv(findings, args.bq_export_sim)
 
 if __name__ == "__main__":
     main()
+

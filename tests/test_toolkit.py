@@ -7,8 +7,19 @@ from unittest.mock import MagicMock, patch
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scanners')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'simulation')))
 
-from gcp_pqc_inventory_scanner import DEFAULT_MOCK_ASSETS, export_to_csv
+from gcp_pqc_inventory_scanner import DEFAULT_MOCK_ASSETS, export_to_csv, generate_cbom
 from cirq_quantum_estimator import estimate_shors_requirements, simulate_toy_quantum_step, get_hndl_priority
+
+def test_cbom_generation():
+    cbom = generate_cbom(DEFAULT_MOCK_ASSETS)
+    assert cbom["bomFormat"] == "CycloneDX"
+    assert cbom["specVersion"] == "1.6"
+    assert "components" in cbom
+    assert len(cbom["components"]) > 0
+    for comp in cbom["components"]:
+        assert comp["type"] == "cryptographic-asset"
+        assert "cryptoProperties" in comp
+        assert "assetType" in comp["cryptoProperties"]
 
 def test_pqc_findings_schema_compliance():
     # Verify mock assets match the stable Finding schema
