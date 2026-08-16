@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gcp-pqc-migration-toolkit"
+version = "0.1.0"
+description = "Assessment, inventory, and planning toolkit for GCP post-quantum migration."
+readme = "README.md"
+authors = [
+    { name = "Anandakrishnan" }
+]
+license = { text = "Apache-2.0" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "cirq>=1.1.0",
+    "streamlit>=1.20.0",
+    "pandas",
+]
+
+[project.optional-dependencies]
+gcp = [
+    "google-cloud-asset>=3.15.0",
+    "google-cloud-kms>=2.11.0",
+    "google-cloud-compute>=1.10.0",
+    "google-cloud-certificate-manager>=0.2.0",
+    "google-auth>=2.15.0",
+]
+dashboard = [
+    "streamlit>=1.20.0",
+    "pandas",
+]
+dev = [
+    "pytest>=7.0.0",
+    "mypy>=1.0.0",
+    "black>=23.0.0",
+]
+
+[project.scripts]
+gcp-pqc-scan = "scanners.gcp_pqc_inventory_scanner:main"
+
+[tool.setuptools]
+packages = ["scanners", "simulation", "dashboard"]

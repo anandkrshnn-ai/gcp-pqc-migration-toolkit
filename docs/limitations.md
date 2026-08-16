@@ -5,8 +5,9 @@ This document outlines the real operational boundaries and constraints when migr
 ---
 
 ## 1. Cloud KMS Native Limitations
-- **No Native Hardware PQC Support**: As of June 2026, Google Cloud KMS HSM modules do not natively support NIST PQC algorithms (ML-KEM, ML-DSA) for hardware-bound cryptographic operations.
-- **Software Workarounds (Enclaves)**: Enterprises must implement software wrapping layers (e.g., using Confidential Space or HSM classical keys wrapping PQC keys) to achieve hybrid protection. This introduces additional operational overhead and increases trust boundary complexity.
+- **No Native Hardware PQC Support**: As of mid-2026, Google Cloud KMS HSM modules do not natively support NIST PQC algorithms (e.g., ML-KEM, ML-DSA) for hardware-bound cryptographic operations.
+- **Software Workarounds (Enclaves)**: To use post-quantum key encapsulation or signing keys today, applications must manage raw PQC key materials within secure environments (such as Confidential Space/Confidential VMs) or software wrapper services. 
+- **Classical Wrapping (Hybrid Model)**: A common approach is using Cloud KMS classical keys (e.g., AES-256 or RSA-4096) as a Key Encryption Key (KEK) to wrap software-defined PQC private keys. This establishes crypto-agility but introduces operational complexity, as key management and raw cryptographic operations are split between KMS and the client application.
 
 ## 2. Signature and Key Size Overhead
 - **Network Latency & Storage Growth**: NIST PQC keys and signatures are significantly larger than classical counterparts:
@@ -16,4 +17,4 @@ This document outlines the real operational boundaries and constraints when migr
 - **Impact**: Large signature sizes can lead to MTU fragmentation, increased network egress costs, and storage expansion in audit/transaction logs.
 
 ## 3. Estimator Simulation Thresholds
-- **Simulation Memory Bounds**: The Shor qubit estimator simulation (`cirq_quantum_estimator.py`) is classically bounded. Simulating Shor's algorithm for keys larger than 30 bits consumes excessive memory and CPU cycles. The script defaults to mathematical scaling calculations for larger keys to prevent out-of-memory (OOM) crashes.
+- **Simulation Memory Bounds**: Classical computers cannot simulate large quantum computers. Quantum simulation of Shor's algorithm via Cirq is limited to toy systems (e.g., under 30 qubits). For real-world keys (e.g., RSA-2048), the estimator uses mathematical scaling models based on physical qubit and gate-depth requirements derived from peer-reviewed literature.

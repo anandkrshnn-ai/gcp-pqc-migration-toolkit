@@ -10,15 +10,25 @@ variable "project_id" {
   description = "The target GCP Project ID for the banking infrastructure."
 }
 
-# 1. PQC KMS Module: Provision KeyRings and HSM classical-hybrid wrapping keys
+# 1. PQC KMS Module: Provision KeyRings and HSM classical KEK wrappers
 module "banking_pqc_kms" {
   source       = "../../modules/pqc-kms"
   project_id   = var.project_id
   location     = "us-central1"
   keyring_name = "retail-banking-kms-ring"
+  key_name     = "retail-core-hybrid-kek"
+
+  rotation_period            = "7776000s" # 90 days
+  destroy_scheduled_duration = "2592000s" # 30 days
+
+  labels = {
+    domain      = "retail-banking"
+    pqc-ready   = "hybrid-enclave"
+    environment = "sandbox"
+  }
 }
 
-# 2. PQC Org Policy Module: Restrict Load Balancers to TLS 1.3+ profiles
+# 2. PQC Org Policy Module: Restrict Load Balancers to TLS 1.3+ profiles and enforce BinAuth
 module "banking_pqc_policies" {
   source     = "../../modules/pqc-policies"
   project_id = var.project_id

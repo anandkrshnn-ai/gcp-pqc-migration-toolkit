@@ -21,8 +21,7 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f scanners/requirements.txt ]; then pip install -r scanners/requirements.txt; fi
-          pip install pytest cirq streamlit
+          pip install -r requirements.txt
 
       - name: Run Tests
         run: |
