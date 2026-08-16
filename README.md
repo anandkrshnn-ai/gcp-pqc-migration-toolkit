@@ -13,15 +13,51 @@ This tool helps security and architecture teams discover legacy cryptography (RS
 
 ---
 
-## 1. Core Features
+## 1. Capabilities
 
-- **PQC Inventory Scanner (MVP)**: A project-scoped resource scanner checking:
-  - **Cloud KMS**: CryptoKeys using classical algorithms (RSA, ECDSA).
-  - **Compute Engine**: SSL Policies allowing TLS versions < 1.3 or non-PQC friendly ciphers.
-  - **Certificate Manager**: Certificates relying on classical asymmetric signatures.
-- **Analytical HNDL Estimator**: Employs literature-backed estimates (e.g. Gidney & Ekerå 2021) to calculate physical and logical qubits under surface code, illustrating the quantum resources required to factor active keys.
-- **Terraform Transition Enclaves**: Modules deploying classical key-wrapping enclaves (KEK wrappers for hybrid crypto-agility) and Organization Policy restrictions.
-- **Readiness Dashboard**: A Streamlit dashboard to load and inspect scan reports, prioritize long-lived keys, and export markdown compliance reports.
+The GCP PQC Migration Toolkit helps security and platform teams inventory cryptographic assets on Google Cloud, assess post-quantum readiness, and plan concrete migration paths using **native GCP PQC primitives** and hybrid strategies.
+
+### What it does today
+
+- **PQC-aware crypto inventory**
+  - Scans GCP projects for cryptographic resources (Cloud KMS keys, TLS endpoints, and related assets).
+  - Classifies each asset as:
+    - **Classical** (RSA, ECDSA, ECDH, etc.)
+    - **Native PQC** (ML-DSA, ML-KEM, SLH-DSA, and other `PQ_*` algorithms supported by Cloud KMS and related services)
+    - **Hybrid** (e.g., X25519 + ML-KEM / “X-Wing”-style configurations where available)
+
+- **Migration path recommendations**
+  - For classical assets, suggests concrete next steps aligned with current GCP capabilities, such as:
+    - “Rotate this KMS key to `ML-DSA-65`”
+    - “Enable hybrid X-Wing for this TLS path”
+    - “Upgrade to PQC-capable certificate configuration in Certificate Manager”
+  - Prioritizes actions using risk signals (data sensitivity, exposure, regulatory context).
+
+- **PQC Maturity Score**
+  - Computes a per-project **PQC Maturity Score**: the percentage of cryptographic assets already on native or hybrid PQC.
+  - Provides a high-level view of readiness across projects and environments.
+
+- **Compliance & planning artifacts**
+  - Generates structured JSON reports suitable for:
+    - Internal risk reviews
+    - Architecture and migration planning
+    - Auditor evidence (with upcoming CBOM export support)
+  - Aligns with emerging standards and guidance (NIST PQC algorithms, EN 18031, NIS2-style cryptographic inventory expectations).
+
+### GCP PQC primitives in scope
+
+As of 2026, the toolkit assumes and leverages:
+
+- **Cloud KMS**
+  - Signature keys: `ML-DSA-*` (e.g., `ML-DSA-65`), `SLH-DSA-*`
+  - KEM keys: `ML-KEM-*`
+  - Hybrid configurations where supported (e.g., X25519 + ML-KEM / “X-Wing”-style)
+- **TLS / Load Balancing / Certificate Manager**
+  - PQC-capable certificate configurations and hybrid key exchange where available
+- **Related GCP security services**
+  - Integration points with Security Command Center, Asset Inventory, and policy controls (roadmap)
+
+The toolkit is updated to reflect **native PQC support in GCP**, not just theoretical or hybrid-only scenarios.
 
 ---
 
@@ -120,4 +156,4 @@ graph TD
 ---
 
 ## 7. Known Operational Limitations
-For a detailed breakdown of GCP API limits, Cloud KMS PQC support statuses, and Shor algorithm simulation thresholds, refer to [docs/limitations.md](docs/limitations.md).
+For a detailed breakdown of GCP API limits, Cloud KMS PQC support statuses, and Shor algorithm simulation thresholds, refer to the [LIMITATIONS.md](LIMITATIONS.md) file at the root.
